@@ -1,0 +1,8 @@
+// Coalesce clinical display work; patient names and narrative edits need no recalculation.
+let clinicalTimer;
+document.addEventListener('input',event=>{
+ const form=document.getElementById('form');if(!form||!form.contains(event.target))return;
+ const el=event.target;
+ if(el!==form&&(el.tagName==='TEXTAREA'||(el.tagName==='INPUT'&&!['number','checkbox','radio'].includes(el.type))))return;
+ clearTimeout(clinicalTimer);clinicalTimer=setTimeout(()=>form.dispatchEvent(new Event('clinicalupdate')),120);
+});

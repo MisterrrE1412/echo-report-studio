@@ -1,0 +1,76 @@
+// Each echo window edits the same anatomical segment score. Changing the view never changes findings.
+(function(){
+const root=document.createElement('div');root.className='wall-views wide';wg.prepend(root);
+const heading=document.createElement('h3');heading.textContent='Mark wall motion';root.append(heading);
+const note=document.createElement('p');note.className='hint';note.textContent='Choose a view, then tap a wall or its name to mark motion. Right-click also works. Colours stay in sync across all views.';root.append(note);
+const nav=document.createElement('div');nav.className='echo-view-nav';nav.setAttribute('role','group');nav.setAttribute('aria-label','Echo view');root.append(nav);
+const levels=document.createElement('div');levels.className='echo-level-nav';levels.setAttribute('role','group');levels.setAttribute('aria-label','Short-axis level');root.append(levels);
+const progress=document.createElement('p');progress.className='wall-progress';progress.setAttribute('aria-live','polite');root.append(progress);
+const marks=[],chips=[],panels=new Map(),viewButtons=new Map(),levelButtons=new Map(),canvases=new Map(),drawn=new Set();
+let activeView='sax',activeLevel='saxBasal';
+function showView(){
+ const selected=activeView==='sax'?activeLevel:activeView;
+ for(const [key,section]of panels)section.hidden=key!==selected;
+ for(const [key,button]of viewButtons)button.setAttribute('aria-pressed',String(key===activeView));
+ for(const [key,button]of levelButtons)button.setAttribute('aria-pressed',String(key===activeLevel));
+ levels.hidden=activeView!=='sax';
+ if(wg.parentElement.open&&drawPanel(selected))refreshViews(true);
+}
+function drawPanel(key){
+ if(drawn.has(key))return false;
+ const canvas=canvases.get(key);if(!canvas)return false;
+ canvas.innerHTML=EchoViews.render(key);drawn.add(key);
+ for(const g of canvas.firstElementChild.querySelectorAll('[data-segment]')){
+  const i=Number(g.dataset.segment)-1,shape=g.querySelector('[data-wall]'),title=g.querySelector('title');
+  const open=()=>{g.focus();openSegment(i);};g.onclick=open;g.oncontextmenu=e=>{e.preventDefault();open();};
+  g.onkeydown=e=>{if(['Enter',' '].includes(e.key)){e.preventDefault();open();}};marks.push({i,g,shape,title});
+ }
+ return true;
+}
+for(const [key,label]of [['sax','Short axis'],['a4c','A4C'],['a3c','A3C'],['a2c','A2C']]){
+ const button=document.createElement('button');button.type='button';button.textContent=label;button.title=key==='sax'?'Short-axis views':EchoViews.titles[key];
+ button.setAttribute('aria-controls',(key==='sax'?['saxBasal','saxMid','saxApical']:[key]).map(k=>'wall-view-'+k).join(' '));
+ button.onclick=()=>{activeView=key;showView();};viewButtons.set(key,button);nav.append(button);
+}
+for(const [key,label]of [['saxBasal','Basal'],['saxMid','Mid'],['saxApical','Apical']]){
+ const button=document.createElement('button');button.type='button';button.textContent=label;button.setAttribute('aria-controls','wall-view-'+key);button.onclick=()=>{activeLevel=key;showView();};levelButtons.set(key,button);levels.append(button);
+}
+for(const key of Object.keys(EchoViews.maps)){
+ const section=document.createElement('section');section.className='wall-view'+(key.startsWith('sax')?'':' apical-window');section.id='wall-view-'+key;section.dataset.echoView=key;
+ const h=document.createElement('h4');h.textContent=EchoViews.titles[key];
+ const caption=document.createElement('p');caption.className='wall-view-caption';caption.textContent=EchoViews.captions[key];
+ const canvas=document.createElement('div');canvas.className='echo-canvas';canvases.set(key,canvas);section.append(h,caption,canvas);
+ const pickers=document.createElement('div');pickers.className='wall-segment-pickers';pickers.setAttribute('role','group');pickers.setAttribute('aria-label',EchoViews.titles[key]+' segments');
+ const ids=[...EchoViews.maps[key].filter(Boolean),...(key.startsWith('sax')?[]:[17])];
+ for(const id of ids){
+  const button=document.createElement('button');button.type='button';button.className='wall-segment-button';button.dataset.segmentChoice=id;
+  const swatch=document.createElement('span');swatch.className='segment-chip';swatch.textContent=id;swatch.setAttribute('aria-hidden','true');
+  const text=document.createElement('span'),name=document.createElement('strong'),status=document.createElement('small');name.textContent=segments[id-1];text.append(name,status);button.append(swatch,text);
+  button.onclick=()=>openSegment(id-1);pickers.append(button);chips.push({i:id-1,button,swatch,status});
+ }
+ section.append(pickers);root.append(section);panels.set(key,section);
+}
+const colourKey=legend.cloneNode(true);colourKey.className='legend wall-view-legend';root.append(colourKey);
+const capControl=document.createElement('button');capControl.type='button';capControl.className='cap-control';capControl.onclick=()=>{capControl.focus();openSegment(16);};root.append(capControl);
+const capHint=document.createElement('p');capHint.className='hint';capHint.textContent='Echo-view schematics · segment 17 is the apical cap. Its annotation is saved and printed. WMSI uses assessable segments 1–16.';root.append(capHint);
+const key=document.createElement('details');key.className='wall-key';const kh=document.createElement('summary');kh.textContent='17-segment name reference';key.append(kh);segments.forEach((name,i)=>{const p=document.createElement('p');p.textContent=(i+1)+'. '+name;key.append(p);});root.append(key);
+const generateMap=document.createElement('button');generateMap.type='button';generateMap.className='primary';generateMap.textContent='Generate bullseye';root.append(generateMap);
+const mapState=document.createElement('p');mapState.className='hint';root.append(mapState);
+// Preserve the score list and final bullseye after the acquisition views.
+wg.append(table);wg.append(box);box.hidden=true;const finalHeading=document.createElement('h3');finalHeading.textContent='Final bullseye — integrated wall motion';box.prepend(finalHeading);
+const capNote=document.createElement('p');capNote.className='hint';capNote.textContent='Segment 17 (apical cap) is retained for orientation / optional annotation and excluded from wall-motion scoring. WMSI uses assessable segments 1–16 only.';box.append(capNote);
+const reference=document.createElement('a');reference.href='https://www.asecho.org/wp-content/uploads/2016/02/2015_ChamberQuantificationREV.pdf';reference.target='_blank';reference.rel='noopener';reference.textContent='ASE/EACVI regional LV function — section 3.1';box.append(reference);
+let lastScores='',generatedScores=null;
+function refreshViews(force=false){
+ const codes=segments.map((_,i)=>effectiveCode(i)),current=codes.join('|'),scored=codes.slice(0,16).filter(x=>['1','2','3','4'].includes(x)).length,unseen=codes.slice(0,16).filter(x=>x==='x').length;
+ if(!force&&current===lastScores)return;
+ progress.textContent=scored+'/16 walls scored'+(unseen?' · '+unseen+' not visualized':'')+' · Cap: '+names[codes[16]].toLowerCase();
+ capControl.textContent='17. Apical cap — '+names[codes[16]]+' · mark / edit';
+ marks.forEach(({i,g,shape,title})=>{const code=codes[i],label=(i+1)+'. '+segments[i]+': '+names[code];shape.setAttribute('fill',fills[code]);g.setAttribute('aria-label',label);title.textContent=label;});
+ chips.forEach(({i,button,swatch,status})=>{const code=codes[i];swatch.style.backgroundColor=fills[code];status.textContent=names[code];button.setAttribute('aria-label',(i+1)+'. '+segments[i]+': '+names[code]+'. Mark or edit.');});
+ mapState.textContent=generatedScores===null?'Review your markings, then generate the bullseye. Blank segments remain unassessed.':current===generatedScores?'Bullseye matches the current markings.':'Markings changed. Update the bullseye after reviewing your views.';
+ generateMap.textContent=generatedScores===null?'Generate bullseye':'Update bullseye';lastScores=current;
+}
+generateMap.onclick=()=>{refreshViews();updateBullseye();generatedScores=lastScores;box.hidden=false;refreshViews(true);box.scrollIntoView({block:'start'});};
+$('form').addEventListener('clinicalupdate',()=>refreshViews());wg.parentElement.addEventListener('toggle',()=>{if(wg.parentElement.open)showView();});showView();refreshViews();
+})();
